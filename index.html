@@ -3,100 +3,89 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>考古辨識系統-測試版</title>
+    <title>考古辨識-原生驅動版</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
     <style>
-        body { font-family: sans-serif; text-align: center; background: #121212; color: white; margin: 0; padding: 20px; }
-        #webcam-container { margin: 15px auto; width: 300px; height: 300px; border: 4px solid #444; border-radius: 15px; overflow: hidden; background: #000; position: relative; }
-        canvas { width: 100% !important; height: 100% !important; object-fit: cover; }
-        #result-box { background: #252525; padding: 15px; border-radius: 10px; margin: 20px auto; max-width: 300px; border-left: 5px solid #ffcc00; }
-        #label { font-size: 1.6rem; font-weight: bold; color: #ffcc00; }
-        #conf { font-size: 0.9rem; color: #888; margin-top: 5px; }
-        .btn { background: #ffcc00; color: #000; border: none; padding: 15px 40px; font-size: 1.1rem; font-weight: bold; border-radius: 50px; cursor: pointer; }
-        #status-log { font-size: 0.7rem; color: #666; margin-top: 20px; }
+        body { font-family: sans-serif; text-align: center; background: #1a1a1a; color: white; margin: 0; padding: 20px; }
+        #video-container { position: relative; width: 300px; height: 300px; margin: 15px auto; border: 4px solid #ffcc00; border-radius: 15px; overflow: hidden; background: #000; }
+        video { width: 100%; height: 100%; object-fit: cover; }
+        canvas { display: none; } /* 隱藏用來計算的畫布 */
+        #result-card { background: #333; padding: 15px; border-radius: 10px; margin: 15px auto; max-width: 300px; }
+        #label { font-size: 1.5rem; font-weight: bold; color: #ffcc00; }
+        .btn { background: #ffcc00; color: #000; border: none; padding: 15px 35px; font-size: 1.2rem; font-weight: bold; border-radius: 10px; cursor: pointer; }
+        #log { font-size: 0.7rem; color: #777; margin-top: 10px; }
     </style>
 </head>
 <body>
 
-    <h2 style="color:#ffcc00;">考古文化 AI 辨識</h2>
-    <p style="font-size:0.8rem; color:#bbb;">請對準陶片，系統將自動分析紋飾特徵</p>
-
-    <div id="webcam-container"></div>
-
-    <div id="result-box">
-        <div id="label">等待啟動</div>
-        <div id="conf">辨識準確度: 0%</div>
+    <h2>考古文化 AI 辨識</h2>
+    
+    <div id="video-container">
+        <video id="webcam-video" autoplay playsinline muted></video>
     </div>
 
-    <button class="btn" id="start-btn" onclick="init()">啟動 AI 辨識</button>
+    <div id="result-card">
+        <div id="label">等待啟動</div>
+        <div id="prob">準確率: 0%</div>
+    </div>
+
+    <button class="btn" id="start-btn" onclick="startSystem()">啟動辨識系統</button>
     
-    <div id="status-log">系統狀態：準備就緒</div>
+    <div id="log">系統狀態：準備就緒</div>
 
-    <script type="text/javascript">
-        // 此連結為 Google 官方穩定測試模型
-        const URL = "https://teachablemachine.withgoogle.com/models/v8L_B9_S/";
+    <script>
+        const MODEL_URL = "https://teachablemachine.withgoogle.com/models/v8L_B9_S/";
+        let model, video, labelContainer, probContainer;
 
-        let model, webcam, labelContainer, confContainer, maxPredictions;
+        async function startSystem() {
+            video = document.getElementById('webcam-video');
+            const log = document.getElementById('log');
+            const btn = document.getElementById('start-btn');
+            labelContainer = document.getElementById('label');
+            probContainer = document.getElementById('prob');
 
-        async function init() {
-            document.getElementById("status-log").innerHTML = "正在載入 AI 模型...";
-            document.getElementById("start-btn").style.display = "none";
+            btn.disabled = true;
+            btn.innerHTML = "啟動中...";
+            log.innerHTML = "正在請求鏡頭權限...";
 
             try {
-                // 1. 載入模型檔案
-                model = await tmImage.load(URL + "model.json", URL + "metadata.json");
-                maxPredictions = model.getTotalClasses();
+                // 1. 先開啟鏡頭 (使用你上次成功的原生語法)
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: "environment" }, 
+                    audio: false 
+                });
+                video.srcObject = stream;
+                log.innerHTML = "鏡頭已開啟，正在載入 AI 模型...";
 
-                // 2. 初始化鏡頭
-                const flip = false; 
-                webcam = new tmImage.Webcam(300, 300, flip); 
+                // 2. 載入 AI 模型
+                model = await tmImage.load(MODEL_URL + "model.json", MODEL_URL + "metadata.json");
                 
-                // 3. 請求權限並設定後鏡頭
-                await webcam.setup({ facingMode: "environment" }); 
-                
-                // 4. 重要：修正手機 Video 標籤屬性
-                const video = webcam.webcam;
-                video.setAttribute('playsinline', 'true');
-                video.setAttribute('muted', 'true');
+                log.innerHTML = "✅ 系統運作中";
+                btn.style.display = "none";
 
-                await webcam.play();
-                document.getElementById("status-log").innerHTML = "✅ 辨識中...";
-                
-                // 5. 將畫布加入網頁
-                document.getElementById("webcam-container").appendChild(webcam.canvas);
-                labelContainer = document.getElementById("label");
-                confContainer = document.getElementById("conf");
+                // 3. 開始辨識迴圈
+                predict();
 
-                window.requestAnimationFrame(loop);
-            } catch (e) {
-                console.error(e);
-                document.getElementById("status-log").innerHTML = "錯誤: " + e.message;
-                document.getElementById("start-btn").style.display = "inline-block";
+            } catch (err) {
+                log.innerHTML = "❌ 失敗: " + err.message;
+                btn.disabled = false;
+                btn.innerHTML = "重新啟動";
             }
-        }
-
-        async function loop() {
-            webcam.update(); // 每一格影像更新
-            await predict();
-            window.requestAnimationFrame(loop);
         }
 
         async function predict() {
-            const prediction = await model.predict(webcam.canvas);
+            // 從 Video 標籤抓取影像進行辨識
+            const prediction = await model.predict(video);
             
-            // 找出機率最高的結果
             prediction.sort((a, b) => b.probability - a.probability);
             const top = prediction[0];
 
-            // 顯示結果
             labelContainer.innerHTML = top.className;
-            confContainer.innerHTML = "辨識準確度: " + (top.probability * 100).toFixed(0) + "%";
-            
-            // 如果你之後換了大坌坑模型，可以在這裡加入特定文字說明
-            if(top.className === "大坌坑") {
-                labelContainer.style.color = "#ffeb3b";
-            }
+            probContainer.innerHTML = "準確率: " + (top.probability * 100).toFixed(0) + "%";
+
+            // 持續執行
+            requestAnimationFrame(predict);
         }
     </script>
 </body>
